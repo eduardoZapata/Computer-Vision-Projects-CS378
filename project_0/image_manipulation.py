@@ -9,3 +9,10 @@ unit tests pass.
 """
 
 # TODO: Implement!
+
+class main():
+	def flip_image(image, horizontal, vertical):
+
+	def negate_image(image):
+
+	def swap_red_and_green(image):
