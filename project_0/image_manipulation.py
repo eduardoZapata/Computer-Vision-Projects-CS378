@@ -7,12 +7,11 @@ Use the unit tests is image_manipulation_test.py to guide
 your implementation, adding functions as needed until all
 unit tests pass.
 """
+import cv2
+import numpy as np
 
-# TODO: Implement!
-
-class main():
-	def flip_image(image, horizontal, vertical):
-
-	def negate_image(image):
-
-	def swap_red_and_green(image):
+def flip_image(image, horizontal, vertical):
+    return 2
+def negate_image(image):
+    return 1
+def swap_red_and_green(image):
