@@ -63,8 +63,7 @@ class TestImageManipulation(unittest.TestCase):
 
     def test_swap_blue_and_green(self):
         """Tests the swap_blue_and_green function."""
-        nyc_swapped = image_manipulation.swap_blue_and_green(
-            numpy.copy(self.nyc_image))
+        nyc_swapped = image_manipulation.swap_blue_and_green(self.nyc_image)
 
         for row, col in _sparse_pixels(self.nyc_image):
             expected_pixel = []
