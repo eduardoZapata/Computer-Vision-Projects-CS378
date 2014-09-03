@@ -10,14 +10,17 @@ unit tests pass.
 import cv2
 import numpy as np
 
+
 def flip_image(image, horizontal, vertical):
-	return 1;
+    return 1
+
 
 def negate_image(image):
-	image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-	return image
+    image = cv2.bitwise_not(image)
+    return image
+
 
 def swap_blue_and_green(image):
-	b,g,r = cv2.split(image)
-	image = cv2.merge((g,b,r))
-	return image
+    b, g, r = cv2.split(image)
+    image = cv2.merge((g, b, r))
+    return image
