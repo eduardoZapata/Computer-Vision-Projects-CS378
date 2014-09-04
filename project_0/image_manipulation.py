@@ -12,7 +12,13 @@ import numpy as np
 
 
 def flip_image(image, horizontal, vertical):
-    return 1
+    if horizontal and vertical:
+        cv2.flip(image, -1, image)
+    elif horizontal:
+        cv2.flip(image, 1, image)
+    elif vertical:
+        cv2.flip(image, 0, image)
+    return image
 
 
 def negate_image(image):
