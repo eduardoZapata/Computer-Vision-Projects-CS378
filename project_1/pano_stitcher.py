@@ -21,7 +21,27 @@ def homography(image_a, image_b):
     Returns: the 3x3 perspective transformation matrix (aka homography)
              mapping points in image_b to corresponding points in image_a.
     """
-    pass
+
+    sift = cv2.SIFT()
+
+    kpA, descriptorsA = sift.detectAndCompute(image_b, None)
+    kpB, descriptorsB = sift.detectAndCompute(image_a, None)
+
+    matcher = cv2.BFMatcher()
+    matches = matcher.knnMatch(descriptorsA, descriptorsB, k=2)
+
+    good = []
+
+    for m, n in matches:
+        if m.distance < 0.7 * n.distance:
+            good.append(m)
+
+    srcP = numpy.float32([kpA[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
+    dstP = numpy.float32([kpB[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
+
+    homography, _ = cv2.findHomography(srcP, dstP, cv2.RANSAC, 1.0)
+
+    return homography
 
 
 def warp_image(image, homography):
@@ -42,7 +62,33 @@ def warp_image(image, homography):
         corner in the target space of 'homography', which accounts for any
         offset translation component of the homography.
     """
-    pass
+    result = cv2.cvtColor(image, cv2.COLOR_BGR2BGRA)
+    rows, cols, shape = result.shape
+
+    co = numpy.array([numpy.array([[0, 0], [0, rows], [cols, 0], [cols, rows]],
+                     dtype="float32")])
+
+    newCo = cv2.perspectiveTransform(co, homography)
+
+    minRow, minCol = newCo[0][0][1], newCo[0][0][0]
+    maxRow, maxCol = minRow, minCol
+
+    for index in xrange(4):
+        minRow = min(minRow, newCo[0][index][1])
+        minCol = min(minCol, newCo[0][index][0])
+        maxRow = max(maxRow, newCo[0][index][1])
+        maxCol = max(maxCol, newCo[0][index][0])
+
+    newRows = int(maxRow - minRow)
+    newCols = int(maxCol - minCol)
+
+    translation = numpy.matrix([[1, 0, -minCol], [0, 1, -minRow],
+                               [0, 0, 1]])
+
+    result = cv2.warpPerspective(result, translation * homography,
+                                 (newCols, newRows))
+
+    return (result, (minCol, minRow))
 
 
 def create_mosaic(images, origins):
@@ -57,4 +103,37 @@ def create_mosaic(images, origins):
              in the mosaic not covered by any input image should have their
              alpha channel set to zero.
     """
-    pass
+    minX, minY = (origins[0][0], origins[0][1])
+    maxX, maxY = minX, minY
+
+    for index in xrange(len(images)):
+        image = images[index]
+        origin = origins[index]
+
+        rows, cols, shape = image.shape
+        x, y = origin
+
+        minX = min(minX, x)
+        minY = min(minY, y)
+
+        maxX = max(maxX, x + cols)
+        maxY = max(maxY, y + rows)
+
+    result = numpy.zeros(((maxY - minY + 1), (maxX - minX + 1), 4),
+                         dtype=numpy.uint8)
+
+    for index in xrange(len(images)):
+        image = images[index]
+        origin = origins[index]
+
+        rows, cols, shape = image.shape
+        x, y = origin
+
+        startY, startX = (y - minY), (x - minX)
+        result[startY:startY + rows, startX:startX + cols] = image
+        # for r in xrange(rows):
+        #     for c in xrange(cols):
+        #         if image[r][c][3] == 255:
+        #             result[(y - minY) + r][(x - minX) + c] = image[r][c]
+
+    return result
