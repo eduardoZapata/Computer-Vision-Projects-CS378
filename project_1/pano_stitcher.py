@@ -33,7 +33,7 @@ def homography(image_a, image_b):
     good = []
 
     for m, n in matches:
-        if m.distance < 0.7 * n.distance:
+        if m.distance < 0.735 * n.distance:
             good.append(m)
 
     srcP = numpy.float32([kpA[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
@@ -129,11 +129,9 @@ def create_mosaic(images, origins):
         rows, cols, shape = image.shape
         x, y = origin
 
-        startY, startX = (y - minY), (x - minX)
-        result[startY:startY + rows, startX:startX + cols] = image
-        # for r in xrange(rows):
-        #     for c in xrange(cols):
-        #         if image[r][c][3] == 255:
-        #             result[(y - minY) + r][(x - minX) + c] = image[r][c]
+        for r in xrange(rows):
+            for c in xrange(cols):
+                if image[r][c][3] == 255:
+                    result[(y - minY) + r][(x - minX) + c] = image[r][c]
 
     return result

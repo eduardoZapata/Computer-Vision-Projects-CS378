@@ -1,0 +1,21 @@
+Paige Hinkle
+Jaime Rivera
+Eduardo Zapata
+
+How to run the script:
+
+$ python script.py
+The resulting images will be in my_panos/ and test_data/
+
+homography():
+For homography we used SIFT to find key points in the pictures, from there we used the brute force matcher to get the list of matches. We then checked each match and only if they passed a threshold of .735 did we keep it. After that we used findHomography with RANSAC to find the homography between the two pictures.
+
+warp_image():
+We apply the perspective transform to the image and use that to create an empty image that will contain the final warped image. After that we use warpPerspective and apply a translation to the homography in order to make the final image is correctly aligned with the top corner.
+
+create_mosaic():
+We again begin by creating an empty container to hold the final panorama. After that we begin iterating through each image and we only write the pixel to the new image if the current pixel is transparent. This writes each image to the final panorama without any sort of blending.
+
+Interesting observations:
+For the create_mosaic function we had two implementations for the last piece of it. One of the ran faster yet did not correctly implement the alpha channel, so we reverted to an different version that ran a bit slower.
+
