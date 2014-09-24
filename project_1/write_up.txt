@@ -11,11 +11,10 @@ homography():
 For homography we used SIFT to find key points in the pictures, from there we used the brute force matcher to get the list of matches. We then checked each match and only if they passed a threshold of .735 did we keep it. After that we used findHomography with RANSAC to find the homography between the two pictures.
 
 warp_image():
-We apply the perspective transform to the image and use that to create an empty image that will contain the final warped image. After that we use warpPerspective and apply a translation to the homography in order to make the final image is correctly aligned with the top corner.
+We apply the perspective transform to the image bounding coordinates in order to determine the new bounding rectangle of the warped image. From here, we can call warp Perspective with the product of the translation and homography in order to ensure that the image does not crop out of bounds. However, since we applied the perspective transform to the coordinates, we can easily determine the top left corner of the image to return to the caller.
 
 create_mosaic():
-We again begin by creating an empty container to hold the final panorama. After that we begin iterating through each image and we only write the pixel to the new image if the current pixel is transparent. This writes each image to the final panorama without any sort of blending.
+We create an empty image that has the correct size to contain all of the sub images that were warped to match one another. From here, we simply use the origins and images provided to insert the images into the larger containing image. We had to check to make sure that any transparent values did not override existing pixels as well.
 
 Interesting observations:
-For the create_mosaic function we had two implementations for the last piece of it. One of the ran faster yet did not correctly implement the alpha channel, so we reverted to an different version that ran a bit slower.
-
+For the create_mosaic function we had two implementations for the last piece of it. One, using splicing, ran very quickly, but produced invalid output since transparent pixels overlapped with pixels that should’ve existed in the final output. Because of this result, we reverted to the slow method of placing each pixel independently and checking for transparency overlapping. This method is much slower, but gets the job done. We did not apply any blending to the images, either.
