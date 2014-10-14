@@ -1,3 +1,5 @@
+PYTHONPATH="${PYTHONPATH}:/lusr/opt/opencv-2.4.9/lib/python2.7/dist-packages"
+export PYTHONPATH
 #!/usr/bin/env bash
 # Run unit tests and format checks.
 #
