@@ -1,56 +1,57 @@
-Project 3: Tracking
-========
+# README
 
-## Due: 4 Nov 2014, 11:59pm
-## Code reviews due: 7 Nov 2014, 11:59pm
-## Final code revisions due: 11 Nov 2014, 11:59pm
+## Structure
 
-In this project, you'll track objects in video sequences. There are many effective methods to do this for the problems provided, so unlike previous projects, you will have to choose which particular approach works best for you for each problem case. I suggest a thorough consideration of OpenCV's libraries when designing solutions.
+We attempted to abstract the task of tracking an object in a frame into two subtasks that could be implemented and tested independently: object detection, and tracking of the noisy readings from the object detection. Superclasses representing these subtasks are in tracking_interfaces.py.
 
-Think back over the different methods for tracking and motion detection discussed in class, including background subtraction, optical flow, sparse feature tracking, and Kalman filtering. You can use any combination of these techniques (and others!) to accomplish your tracking tasks.
+In tracking_mocks.py are dummy implementations of each of the two interfaces, which allow testing the other without a function implementation of the one not being currently implemented. This helped us to work in parallel.
 
-### Tracking the bounds of a solid-colored ball (50 points)
+For debugging, tracking.py has a DEBUG flag that causes frames to be written to the debug_frames directory with highlights of the measured (from the ObjectDetector) and predicted (from the Tracker) bounding boxes of the object being tracked. There also exists a script called debug_video.sh that uses ffmpeg to stitch the frames outputted into this directory into a video file.
 
-<img height="350" src="https://raw.githubusercontent.com/ut-cs378-vision-2014fall/course-info/master/images/ball_frame.png"/>
+## Our Current Approach
 
-For this part of the project, you'll track a ball as it moves across different background fields. There are four input videos, `ball_{1,2,3,4}.mov`. You'll need to track the ball's motion in each video.
+### Ball 1 (solid color background)
 
-Implement four functions, `track_ball_{1,2,3,4}()`, which track the bounds of the ball in each of the four input videos. It's likely that the implementation of these four functions will share some helper functions, or may just call a single shared implementation, perhaps with different parameters.
+For the first ball tracking task, we just use a vanilla Hough Circles detector on a blurred grayscale version of the frame. Since the image is very simple, this naive approach actually works quite well. A NullTracker works fine here because there is little in the image to "distract" the Hough Circles detector or make its results poor.
 
-Your function will return, for each frame of the video, the `(min_x, min_y, max_x, max_y)` tuple describing the rectangular bounding box around the ball. The bounds will be compared against the ground truth bounds in `test_data/ball_bounds.txt`.
+### Ball 2 (checkered background)
 
-Your implementation may not make use of any "ground truth" information about the videos that it does not determine on its own, including the ball's color, initial location, dimensions, or motion.
+For the second ball tracking task, we use the Hough Circles detector on the image that results from subtracting the current frame from the mean image of the previously seen frames. Then, to reduce noise from this, we use the AverageRadiusSmoother class, which keeps track of the average radius of the balls detected over the past few frames and converts the measured bounding boxes to have the same center but average radius. This prevents blips of much larger or much smaller radius, since the size of the ball does not change, only its position.
 
-### Tracking the location of a face (30 points)
+### Ball 3 (adversarially colored background)
 
-<img height="350" src="https://raw.githubusercontent.com/ut-cs378-vision-2014fall/course-info/master/images/face_track_frame.png"/>
+For the third ball tracking task, our approach has two passes. The first one visits every frame and computes a mean image (believed to be the background). Then, each frame is subtracted from this mean and the ball is detected using cv2.findContours. We found that on this particular test the HoughCircles detector didn't work well because the foreground object has the same color as the background and the region of the image that differs between the frame and the average is not strictly circular (thus we look at its bounding box).
 
-For this part of the project, you will track a face as it moves in a real video. You will implement a `track_face()` function that returns output of the same format as your ball tracking functions: a per-frame `(min_x, min_y, max_x, max_y)` bounding box of the face. You will likely need more sophisticated detection to find a face compared with a ball.
+Since this approach requires two passes, it does not use the genericTrack function used by other tests.
 
-Your implementation may not make sue of any "ground truth" information about the video that it does not determine on its own, including the face's initial location or motion.
+### Ball 4 (moving background)
 
-### Code quality and review (20 points)
+For the fourth ball tracking task, we use a similar approach to the HoughCirclesBallDetector from the first task with a few adjustments. The blur radius is a bit different. If the detected radius is very different from that last one, it is ignored and the previous radius is taken. There are a few problems with this that we could potentially fix if we had more time:
 
-Above and beyond just passing the pep8 style checker, you should strive to write readable, modular, well-factored code. As in project 1, each group will review three other groups code, and then receive ratings on the quality of their review. You'll receive up to 5 points for the quality of your groups review. After you revise your code in response to review, we'll go over your final code and rate it's quality for up to another 15 points. Hint: the style and comments of OpenCV tutorials is not a model you should emulate :)
+1. It relies on getting a good (near correct) radius from the first frame. If it's bad, everything afterward that's good will appear too different and be ignored.
 
-### Extra credit (maximum of 50 points)
+2. It duplicates a lot of code from HoughCirclesBallDetector, which should have just been itself parameterized with the small changes we made to its behavior.
 
-Tracking is a broad research topic, and we're only scratching the surface with the above tasks. If you like, you can do additional implementation work for extra credit.
+### Face
 
-Be sure to include code for the extra credit as part of your check-in. Also, please add a PDF write-up describing which extra credit you implemented including your results called `extra_credit.pdf` in the project_3 directory so we can see your results.
+For the face tracking, we use the Haar-cascade Face Detection classifier built into OpenCV with a sample training dataset (haarcascade_frontalface_default.xml) we found online. It turns out the results from this are so good (i.e. not noisy) that using a NullTracker (one of our mock classes, which simply predicts the last thing that was measured, with no smoothing) works fine (and in fact the KalmanTracker's reluctance results in a poorer result).
 
-#### Track multiple pedestrians in a street video (20 points)
+## Our Failed Attempts
 
-Download the ETH annotated pedestrian video dataset from [here](http://www.vision.ee.ethz.ch/datasets_extra/ewap_dataset_full.tgz). Implement multi-object tracking for pedestrians in the video, and compare your results to the labeled ground truth.
+Several of the things we tried that failed have been moved into tracking_attempts.py. Here's a brief explanation of each of them:
 
-#### Composite a 3D object onto a planar surface in a video (30 points)
+### Kalman Filter
 
-Similar to effects in [this video](https://www.youtube.com/watch?v=Y9HMn6bd-v8), use parallax effects in tracked features in a video to establish a planar surface in the scene, and then composite a 3D model onto the planar surface. Produce a video of the result.
+The first Tracker implementation we tried was a Kalman Filter, since we'd talked a bit about it in class, and one of us had used OpenCV's Kalman filter implementation in a previous outside project. We ran into a bit of difficulty using OpenCV's Kalman filter from Python because the cv2 bindings are incomplete. We had to use the old OpenCV 1 bindings (accessible through cv2.cv) to use the Kalman Filter.
 
-## Logistics
+Also, we ran into a problem where the Kalman filter was too reluctant to update its state when the direction of motion seen in the measurements changed radically. One approach we tried to alleviate this was suggested on StackOverflow, and was to slowly increase the process noise covariance parameter of the Kalman filter over time. This parameter represents the magnitude of stochastic noise expected in the model. We found this approach to help a bit, but not as much as we needed it to.
 
-You will work on this project in randomly assigned groups of three. All group members should have identical submissions in each of their private repositories by the project due date. We will select one group member's repository, clone it, and use it to compute the grade for all group members.
+In the end, we ended up not using our KalmanTracker class for any of the 5 tracking tasks of the assignment.
 
-If the group chooses to turn in a project N days late, each individual in the group will lose N of their remaining late days for the semester. If one or more students have no more late days left, they'll lose credit without affecting the other group members' grades.
+### Jump Rejector
 
+This was a Tracker implementation intended to reject measurements whose center was too far from the centers of previously observed balls. It accomplishes this by computing Z scores over a small sample of measured ball locations.
 
+### filterOutliers
+
+The filterOutliers function is a second pass on the results list generated through genericTrack. After all frames have been processed through the normal ObjectDetector/Tracker pipeline, this function goes through the list of results and identifies individual frames that differ greatly from both the frame before and the frame after. When such frames are identified, their results are replaced by the result of the previous frame. There is a parameter indicating how much difference between frames is tolerated. We tried tuning this but didn't get great results in any case and ended up not using this approach.

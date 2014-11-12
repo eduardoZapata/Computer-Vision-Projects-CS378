@@ -1,1 +1,3 @@
 *.pyc
+test_data/debug_frames/*.png
+test_data/debug_frames/*.mp4

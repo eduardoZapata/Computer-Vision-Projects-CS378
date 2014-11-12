@@ -4,112 +4,25 @@ In this project, you'll track objects in videos.
 """
 
 import cv2
-from cv2 import cv  # old version of OpenCV required for KalmanFilter
 import math
 import numpy as np
 
 from tracking_interfaces import *
 from tracking_mocks import *
+from tracking_attempts import *
 
 DEBUG = False
 
 
-# inspired by http://jayrambhia.wordpress.com/2012/07/26/kalman-filter/
-class KalmanTracker(Tracker):
-    inited = False
-    kf = None
-    measurement = None
-    timestep = 0
-
-    def __init__(self):
-        # state vector:
-        #  0: min_x
-        #  1: min_y
-        #  2: max_x
-        #  3: max_y
-        #  4-7: derivatives of 0-4 respectively
-        # measurement vector:
-        #  0-4: same as state (no derivatives)
-        self.kf = cv.CreateKalman(8, 4, 0)
-
-        self.setOldCvMat(self.kf.transition_matrix, [
-            [1, 0, 0, 0, 1, 0, 0, 0],
-            [0, 1, 0, 0, 0, 1, 0, 0],
-            [0, 0, 1, 0, 0, 0, 1, 0],
-            [0, 0, 0, 1, 0, 0, 0, 1],
-            [0, 0, 0, 0, 1, 0, 0, 0],
-            [0, 0, 0, 0, 0, 1, 0, 0],
-            [0, 0, 0, 0, 0, 0, 1, 0],
-            [0, 0, 0, 0, 0, 0, 0, 1],
-        ])
-
-        self.measurement = cv.CreateMat(4, 1, cv.CV_32FC1)
-
-        cv.SetIdentity(self.kf.measurement_matrix, cv.RealScalar(1))
-        cv.SetIdentity(self.kf.process_noise_cov, cv.RealScalar(1e-3))
-        cv.SetIdentity(self.kf.measurement_noise_cov, cv.RealScalar(1e-1))
-        cv.SetIdentity(self.kf.error_cov_post, cv.RealScalar(1))
-
-    def setOldCvMat(self, cvmat, arr):
-        for r, row in enumerate(arr):
-            for c, v in enumerate(row):
-                cvmat[r, c] = v
-
-    # as suggested at http://dsp.stackexchange.com/questions/3039
-    #                 /kalman-filter-implementation-and-deciding-parameters
-    # this progressively increases the processNoiseCov parameter. This controls
-    # what the Kalman filter perceives as the amount stochastic noise in the
-    # model to mitigate the issue of it becoming more trusting of itself and
-    # less trusting of new observations over time.
-    def updateProcessNoiseCov(self):
-        self.timestep += 1
-
-        startTS = 0
-        endTS = 400
-        startCov = 1e-4
-        endCov = 1e-3
-
-        covSlope = (endCov - startCov) / (endTS - startTS)
-        covIntercept = startCov
-
-        cov = covSlope * (self.timestep - 30) + covIntercept
-        print "frame %d: cov=%.4g" % (self.timestep, cov)
-
-        cv.SetIdentity(self.kf.process_noise_cov, cv.RealScalar(cov))
-
-    def observe(self, measurement):
-
-        measurementMatrix = map(lambda v: [v], measurement)
-
-        if not self.inited:
-            self.inited = True
-
-            self.setOldCvMat(self.kf.state_pre, measurementMatrix)
-
-        else:
-
-            self.setOldCvMat(self.measurement, measurementMatrix)
-            cv.KalmanCorrect(self.kf, self.measurement)
-
-    def predict(self):
-
-        self.updateProcessNoiseCov()
-
-        prediction = cv.KalmanPredict(self.kf)
-        return tuple([int(prediction[i, 0]) for i in range(0, 4)])
-
-
+# computes distance between 2D points
 def dist(x1, y1, x2, y2):
     return math.sqrt((x1-x2)**2 + (y1-y2)**2)
 
 
 class HoughCirclesBallDetector(ObjectDetector):
-    # last = None
-
-    # def __init__(self):
-    #     self.last = (0, 0, 0, 0)
-
-    lastCenter = (0, 0)
+    """
+    Directly uses the Hough Circles algorithm to detect circles.
+    """
 
     def detect(self, frame):
         # convert frame to gray
@@ -123,36 +36,35 @@ class HoughCirclesBallDetector(ObjectDetector):
             grayscale,
             method=cv2.cv.CV_HOUGH_GRADIENT,
             dp=1,
-            minDist=1000,
+            minDist=30,
             param1=100,
-            param2=40
+            param2=50
             )
-
-        cx, cy = self.lastCenter
-
-        bestCircle = min(circles, key=lambda c: dist(c[0, 0], c[0, 1], cx, cy))
+        # get first element of result
+        # get from HoughCircles
+        circle = circles[0][0]
 
         # circle's info
-        x = bestCircle[0, 0]
-        y = bestCircle[0, 1]
-        self.lastCenter = (x, y)
-        r = bestCircle[0, 2]
-
-        if DEBUG:
-            cv2.circle (frame, (x, y), r, (0, 0, 255), 3, 8, 0)
-            cv2.imshow("image", frame)
-            cv2.waitKey(1)
+        x = circle[0]
+        y = circle[1]
+        r = circle[2]
 
         return (x-r, y-r, x+r, y+r)
 
 
 class BackgroundSubtractionDetector(ObjectDetector):
+    """
+    Attempts to subtract the current frame from a mean image of the frames seen
+    so far and then use a Hough Circles algorithm to detect a circle in the
+    resulting image.
+    """
+
     # Used to ensure that the first frame isn't used in subtraction.
     count = 1
     # Stores averaged background image
     avg = None
 
-    lastCenter = (0,0)
+    lastCenter = (0, 0)
 
     def detect(self, frame):
         if self.avg is None:
@@ -170,19 +82,18 @@ class BackgroundSubtractionDetector(ObjectDetector):
         # convert frame to gray
         grayscale = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-        #Using Gaussian blur to reduce noise and avoid false circle detection
-        grayscale = cv2.GaussianBlur (grayscale, (5, 5), 2, 2)
+        # Using Gaussian blur to reduce noise and avoid false circle detection
+        grayscale = cv2.GaussianBlur(grayscale, (3, 3), 0)
 
         p2 = 45
         circles = []
         while p2 >= 5 and (circles is None or len(circles) < 1):
-            print "trying p2=%d" % p2
             circles = cv2.HoughCircles(
                 # grayscale image
-                grayscale, 
-                method=cv2.cv.CV_HOUGH_GRADIENT, 
-                dp=1,
-                minDist=300, 
+                grayscale,
+                method=cv2.cv.CV_HOUGH_GRADIENT,
+                dp=2,
+                minDist=300,
                 param1=100,
                 param2=p2
             )
@@ -190,26 +101,24 @@ class BackgroundSubtractionDetector(ObjectDetector):
 
         cx, cy = self.lastCenter
         r = 0
-        # print circles
-        bestCircle = min(circles, key=lambda c: dist(c[0, 0], c[0, 1], cx, cy)) if self.count < 4 else circles[0]
-        # print bestCircle
-        
+        if self.count < 4:
+            bestCircle = min(
+                circles, key=lambda c: dist(c[0, 0], c[0, 1], cx, cy))
+        else:
+            bestCircle = circles[0]
+
         self.lastCenter = (bestCircle[0, 0], bestCircle[0, 1])
 
-        if DEBUG:
-            print circles
-            for circle in circles:
-                for (x,y,r) in circle:
-                    # print x
-                    # print y
-                    # circle outline
-                    cv2.circle (frame, (x, y), r, (0, 0, 255), 3, 8, 0)
-            
-            cv2.circle (frame, self.lastCenter, bestCircle[0, 2], (0, 255, 0), 4, 8, 0)
-            
-            cv2.imshow("background", res)
-            cv2.imshow("image", frame)
-            cv2.waitKey(1)
+        for circle in circles:
+            for (x, y, r) in circle:
+                # circle outline
+                cv2.circle(frame, (x, y), r, (0, 0, 255), 3, 8, 0)
+
+        cv2.circle(frame,
+                   self.lastCenter,
+                   bestCircle[0, 2],
+                   (0, 255, 0),
+                   4, 8, 0)
 
         self.count += 1
 
@@ -218,23 +127,27 @@ class BackgroundSubtractionDetector(ObjectDetector):
 
 
 class AverageRadiusSmoother(Tracker):
+    """
+    This attempts to prevent large jumps in the size of the ball detected since
+    the ball does not actually change size in the frame. Note that this
+    approach is not applicable to the face tracking, because the face may
+    change size in the frame.
+    """
+
     tracker = None
     avg = 0
     n = 0
 
-    def __init__(self, tracker = None):
+    def __init__(self, tracker=None):
         self.tracker = tracker if tracker is not None else NullTracker()
 
     def observe(self, result):
-               
         radius = self.radius(result)
-        
+
         self.avg *= float(self.n)
         self.avg += radius
         self.n += 1
         self.avg /= float(self.n)
-
-        # print "read radius %.4f, avg radius %.4f" % (radius, self.avg)
 
         adjusted = self.adjustRadius(result, self.avg)
 
@@ -244,15 +157,13 @@ class AverageRadiusSmoother(Tracker):
         return self.tracker.predict()
 
     def radius(self, (min_x, min_y, max_x, max_y)):
-        
         w = max_x - min_x
         h = max_y - min_y
         return (w + h) / 4
 
     def adjustRadius(self, result, radius):
-
         min_x, min_y, max_x, max_y = result
-        
+
         oldRad = self.radius(result)
         cx, cy = min_x + oldRad, min_y + oldRad
 
@@ -265,7 +176,11 @@ class AverageRadiusSmoother(Tracker):
 
 
 class FaceDetector(ObjectDetector):
-    # using Haar-cascade Detection
+    """
+    Uses Haar-cascade Face Detection to find regions of an image that appear to
+    contain human faces.
+    """
+
     def detect(self, frame):
         # Load the pre trained classifiers for face
         face_cascade = cv2.CascadeClassifier(
@@ -296,9 +211,11 @@ class FaceDetector(ObjectDetector):
         return result
 
 
-def genericTrack(video, detector, tracker):
+def genericTrack(video, detector, tracker, useSecondPass=False):
     """Takes a video object, an ObjectDetector, and a Tracker and returns a
-    list of the tracked coordinates for each frame
+    list of the tracked coordinates for each frame. If the DEBUG flag is true,
+    it also outputs frames to the debug_frames directory that show the measured
+    and predicted bounding boxes.
     """
 
     results = []
@@ -336,7 +253,34 @@ def genericTrack(video, detector, tracker):
             cv2.imwrite("test_data/debug_frames/%d.png" % frameNumber, frame)
 
     print "processed %d frames" % len(results)
+
+    if useSecondPass:
+        # this is implemented in tracking_attempts.py
+        # see the doc comment there and the README for an explanation of what
+        # this does.
+        print "running second outlier filtering pass..."
+        results = filterOutliers(results)
+
     return results
+
+
+def findBackground(video):
+    """
+    Computes a mean image across all the frames of the given video, and returns
+    that, as well as the list of frames (to avoid re-reading them from the
+    video file).
+    """
+
+    ret, frame = video.read()
+    frames = []
+    avg = np.float32(frame)
+    while (ret):
+        cv2.accumulateWeighted(frame, avg, 0.1)
+        frames.append(frame)
+        ret, frame = video.read()
+    background = cv2.convertScaleAbs(avg)
+    video.release()
+    return background, frames
 
 
 def track_ball_1(video):
@@ -370,20 +314,91 @@ def track_ball_2(video):
 
 def track_ball_3(video):
     """As track_ball_1, but for ball_2.mov."""
-    return genericTrack(
-        video,
-        BackgroundSubtractionDetector(),
-        AverageRadiusSmoother(NullTracker())
-    )
+    result = []
+    lastCircle = []
+    THRESHOLD = 7
+
+    fgbg = cv2.BackgroundSubtractorMOG()
+    background, frames = findBackground(video)
+    fgbg.apply(background)
+
+    for frame in frames:
+        fgmask = fgbg.apply(frame)
+
+        _, threshold = cv2.threshold(fgmask, 127, 255, 0)
+
+        contours, hierarchy = cv2.findContours(threshold, cv2.RETR_TREE,
+                                               cv2.CHAIN_APPROX_SIMPLE)
+        rect = cv2.boundingRect(contours[0])
+
+        if len(lastCircle) != 0 and rect[2] < lastCircle[2] - THRESHOLD:
+            result.append((
+                lastCircle[0],
+                lastCircle[1],
+                lastCircle[0] + lastCircle[2],
+                lastCircle[1] + lastCircle[3]
+            ))
+        else:
+            result.append((
+                rect[0],
+                rect[1],
+                rect[0] + rect[2],
+                rect[1] + rect[3]
+            ))
+            lastCircle = rect[:4]
+
+    return result
 
 
 def track_ball_4(video):
     """As track_ball_1, but for ball_2.mov."""
-    return genericTrack(
-        video,
-        BackgroundSubtractionDetector(),
-        AverageRadiusSmoother()
-    )
+
+    # List stores (x_min, y_min, x_max, y_max)
+    result = []
+    # Store the radius of previous tracked circle
+    radius = 0
+    # Threshold for radius
+    threshold = 5
+    ret, frame = video.read()
+
+    while ret:
+        # convert frame to gray
+        grayscale = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        # Using Gaussian blur to reduce noise
+        # and avoid false circle detection
+        grayscale = cv2.GaussianBlur(grayscale, (3, 3), 0)
+
+        # use loop to make sure p2 goes down to a number
+        # that Houghcircles can catch a circle
+        p2 = 45
+        circles = []
+        while p2 >= 5 and (circles is None or len(circles) < 1):
+            circles = cv2.HoughCircles(
+                # grayscale image
+                grayscale,
+                method=cv2.cv.CV_HOUGH_GRADIENT,
+                dp=3,
+                minDist=300,
+                param1=100,
+                param2=p2
+            )
+            p2 -= 5
+
+        assert circles is not None
+
+        # Get the first circle
+        x, y, r = circles[0][0]
+
+        # Avoid radius of the circle changing too much between frames
+        if r < radius - threshold:
+            r = radius
+        cv2.circle(frame, (x, y), radius, (0, 255, 0), 4)
+        res = (x - r, y - r, x + r, y + r)
+        result.append(res)
+        ret, frame = video.read()
+
+    return result
 
 
 def track_face(video):
