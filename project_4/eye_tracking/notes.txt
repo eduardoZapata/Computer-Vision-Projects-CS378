@@ -1,0 +1,2 @@
+- http://docs.opencv.org/trunk/doc/py_tutorials/py_objdetect/py_face_detection/py_face_detection.html
+- https://code.google.com/p/klucv2/

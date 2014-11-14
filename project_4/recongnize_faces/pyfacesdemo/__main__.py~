@@ -1,0 +1,57 @@
+from pyfaces import pyfaces
+import cv2
+import Image
+import sys,time
+
+if __name__ == "__main__":
+    try:
+        start = time.time()
+        argsnum=len(sys.argv)
+        print "args:",argsnum
+        if(argsnum<3):
+            print "usage:python pyfacesdemo imgname dirname numofeigenfaces threshold "
+            sys.exit(2)                
+        
+        faceCascade = cv2.CascadeClassifier('haarcascade_frontalface_alt2.xml')
+
+        video = cv2.VideoCapture('lauren2.mov')
+        print video.isOpened()
+        ret, frame = video.read()
+        index = 0
+        while ret:            
+
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            faces = faceCascade.detectMultiScale(gray, 1.1, 5, \
+            0 | cv2.cv.CV_HAAR_SCALE_IMAGE, (30, 30))
+
+            #print faces
+            # Draw a rectangle around the faces            
+            for (x, y, w, h) in faces:
+                imgname=gray[y: y + 100, x: x + 100]                               
+                dirname=sys.argv[1]
+                egfaces=int(sys.argv[2])
+                thrshld=float(sys.argv[3])
+                im = Image.fromarray(imgname)
+                im.save('face.png')
+                pyf = pyfaces.PyFaces('face.png',dirname,egfaces,thrshld)
+                print 'You are looking at ' + pyf.match
+                cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)           
+
+            # Display the resulting frame
+            cv2.imshow('Video', frame)
+            cv2.waitKey(1)
+
+            # Capture frame-by-frame
+            ret, frame = video.read()
+            index = index + 1
+
+        # When everything is done, release the capture
+        video.release()
+        cv2.destroyAllWindows()
+        
+        end = time.time()
+        print 'took :',(end-start),'secs'
+
+    except Exception,detail:
+        print detail.args
+        print "usage:python pyfacesdemo imgname dirname numofeigenfaces threshold "
