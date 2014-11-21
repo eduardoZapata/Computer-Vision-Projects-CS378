@@ -1,4 +1,5 @@
 from PIL import Image
+
 class XImage:
     def __init__(self,filename):
         self._readImage(filename)

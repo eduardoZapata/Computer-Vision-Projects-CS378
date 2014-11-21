@@ -1,7 +1,7 @@
 import cv2
 import sys
 
-faceCascade = cv2.CascadeClassifier('haarcascade_frontalface_alt2.xml')
+faceCascade = cv2.CascadeClassifier('pyfacesdemo/haarcascade_frontalface_alt2.xml')
 
 video_capture = cv2.VideoCapture(0)
 while True:
